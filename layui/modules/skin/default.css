@@ -1,0 +1,35 @@
+html #layuicss-yycmsAdmin{display: none; position: absolute; width: 1989px;}
+
+
+
+
+/* 系统 */
+::-webkit-input-placeholder{color: #ccc}
+
+/** 滚动条 **/
+/*
+::-webkit-scrollbar{width: 10px; height: 10px;}
+::-webkit-scrollbar-button:vertical{display: none;}
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner{background-color: #e2e2e2;}
+::-webkit-scrollbar-thumb{border-radius: 0; background-color: rgba(0,0,0,.3);}
+::-webkit-scrollbar-thumb:vertical:hover{background-color: rgba(0,0,0,.35);}
+::-webkit-scrollbar-thumb:vertical:active{background-color: rgba(0,0,0,.38);}
+*/
+
+
+/* 全局 */
+html{background-color: #f2f2f2; color: #666;}
+*[template]{display: none;}
+*[lay-href],
+*[lay-tips],
+*[yycmsadmin-event]{cursor: pointer;}
+
+#YY_HEADER{bottom: 1px solid #ccc;background: #fff;padding: 15px;}
+#YY_BODY{padding: 15px;}
+.layuiadmin-badge{position:absolute;right:15px;top:50%;margin-top:-9px;color:#01AAED}
+.layuiadmin-span-color{position:absolute;right:15px;}
+.layuiadmin-span-color{font-size:14px}
+.layuiadmin-span-color i{padding-left:5px}
+.layuiadmin-card-list{padding:15px}
+.layuiadmin-card-list p.layuiadmin-normal-font{padding-bottom:10px;font-size:20px;color:#666;line-height:24px}
+.layuiadmin-card-list p.layuiadmin-big-font{font-size:36px;color:#666;line-height:36px;padding:5px 0 10px;overflow:hidden;text-overflow:ellipsis;word-break:break-all;white-space:nowrap}
