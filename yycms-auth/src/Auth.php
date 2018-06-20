@@ -10,26 +10,24 @@
 // +----------------------------------------------------------------------
 namespace yycms\auth;
 
-// defined('VIEW_PATH') or define('VIEW_PATH', __DIR__ . DS.'view'. DS);
+defined('VIEW_PATH') or define('VIEW_PATH', __DIR__ . DS.'view'. DS);
 
 use think\Cache;
-
 use think\Config;
 use think\Loader;
 use think\Request;
 use think\Session;
-// use thinkcms\auth\controller\Rbac;
-// use thinkcms\auth\model\ActionLog;
-// use thinkcms\auth\model\AuthAccess;
-// use thinkcms\auth\model\AuthRoleUser;
-// use thinkcms\auth\model\Menu;
+use yycms\auth\model\ActionLog;
+use yycms\auth\model\AuthAccess;
+use yycms\auth\model\AuthRoleUser;
+use yycms\auth\model\Menu;
 
 class Auth
 {
     const  PATH                 = __DIR__;
     public $log                 = true;
     public $noNeedCheckRules    = [];           //不需要检查的路由规则
-
+	
     public function __construct()
     {
         $this->request      = Request::instance();
@@ -37,7 +35,6 @@ class Auth
         $this->module       = $this->request->module();
         $this->controller   = $this->request->controller();
         $this->action       = $this->request->action();
-
     }
 
     /**
@@ -48,17 +45,18 @@ class Auth
      */
     public function autoload($name){
 
-        $controller = new Rbac($this->request);
-
-        if(strtolower($this->controller) == 'auth' && method_exists($controller,$name)){
-          return  call_user_func([$controller, $name]);
-        }
-
-       return false;
-    }
-    public static function test()
-    {
-        echo 'hello word';
+		$this->controller = strtolower($this->controller) == 'auth' ? 'Rbac' : $this->controller;
+		$class = '\\yycms\\auth\\controller\\'.$this->controller;
+		if(class_exists($class)){
+			$controller = new $class($this->request);
+			
+			if(method_exists($controller,$name)){
+	          return  call_user_func([$controller, $name]);
+	        }
+		}else{
+			return abort(404,'控制器不存在');
+		}
+       	return false;
     }
 
     /**
@@ -104,7 +102,8 @@ class Auth
 
         if($uid != 1){
             $authMenu        = self::authMenu('',false);
-            if(array($authMenu)){ //授权菜单ID
+
+            if(is_array($authMenu)){
                $where['id']=['in',array_keys($authMenu)];
             }
         }
@@ -182,8 +181,8 @@ class Auth
         $param  = $this->param;
         $condition = '';
         $command   = preg_replace('/\{(\w*?)\}/', '{$param[\'\\1\']}', $logrule);
-        @(eval('$condition=("' . $command . '");'));
-
+        @(eval('$condition= (string)("' . $command . '");'));
+        //dump($condition);die;
         $data   = [
             'action_ip'     => ip2long($this->request->ip()),
             'username'      => self::sessionGet('user.nickname'),
@@ -231,9 +230,14 @@ class Auth
             return false;
         }
 
+        //超级管理员角色跳过路由验证
+        if($authMenu === true){
+            return true;
+        }
+
         //验证路由
         foreach ($authMenu as $v){
-            if($v['name'] == $path){
+            if($v['rule_name'] == $path){
                 if(empty($v['rule_param'])){  //验证规则为空,表示所有通过
                     return true;
                 }else{                       //如有验证规则,根据规则验证
@@ -246,6 +250,9 @@ class Auth
                 }
             }
         }
+
+
+
         return false;
     }
 
@@ -262,7 +269,7 @@ class Auth
         $list   = []; //保存验证通过的规则名)
         $param  = $this->param;
 
-        $rules = self::authMenu(["b.name"=>["in",$rule]]);
+        $rules = self::authMenu(["AuthAccess.rule_name"=>["in",$rule]]);
 
         //是否为超级管理员角色
         if($rules === true){
@@ -316,7 +323,7 @@ class Auth
     private static function authMenu($where=[],$default = true){
         $uid        = self::sessionGet('user.uid');
         $rule       = [];
-        $roleId     = AuthRoleUser::hasWhere('authRule')->where(['a.user_id'=>$uid,'b.status'=>1])->column('role_id');
+        $roleId     = AuthRoleUser::innerAuthRole($uid);
 
         if(in_array(1,$roleId)){
             return true;
@@ -324,22 +331,24 @@ class Auth
         $roleId     = implode(',',$roleId);
         //角色权限 or 管理员权限
         if($default === true){
-            $rule       = AuthAccess::hasWhere('authRule')->where($where)
-                ->where('(a.type="admin_url" and a.role_id in(:roleId))or(a.type="admin" and a.role_id =:uid)',['roleId'=>$roleId,
-                    'uid'=>$uid]);
+            $rule   = AuthAccess::innerAuthRule($roleId,$uid,$where);
+           // dump($rule);die;
         }else if($default === false){
-            $rule       = AuthAccess::where($where)
-                ->where('(type="admin_url" and role_id in(:roleId))or(type="admin" and role_id =:uid)',['roleId'=>$roleId,
-                    'uid'=>$uid]);
-        }
 
-        $rule = $rule->column('*','menu_id');
+            $rule       = AuthAccess::where($where)
+                ->where('(type="admin_url" and role_id in(:roleId))or(type="admin" and role_id =:uid)', [
+                    'roleId'    => $roleId,
+                    'uid'       => $uid
+                ])
+                ->column('*','menu_id');
+        }
 
         if(empty($rule)){
             return false;
         }
         return $rule;
     }
+
 
     /**
      * 检测用户是否登录
@@ -371,7 +380,7 @@ class Auth
                             'nickname'  => $nickname,
                             'time'      => time()
                         ];
-
+		Session::set($session_prefix.'login_errnum',0);
         Session::set($session_prefix.'user',$user);
         Session::set($session_prefix.'user_sign',self::data_auth_sign($user));
         return true;
@@ -408,11 +417,22 @@ class Auth
      * @param  string  $path 被认证的数据
      * @return mixed
      */
-    private static function sessionGet($path =''){
+    public static function sessionGet($path =''){
         $session_prefix = Config::get('thinkcms.session_prefix');
         $user           = Session::get($session_prefix.$path);
         return $user;
     }
-
+	
+	/**
+     * 设置session
+     * @access private static
+     * @param  string  $path 被认证的数据
+     * @return mixed
+     */
+    public static function sessionSet($path ='',$value){
+        $session_prefix = Config::get('thinkcms.session_prefix');
+        $session_data   = Session::set($session_prefix.$path,$value);
+        return $session_data;
+    }
 
 }
